@@ -51,14 +51,6 @@ def process_error_log(input_path: str, existing_excel_path: str):
                 'Count': ''
             })
 
-    # Add total count row
-    output_rows.append({
-        'ERROR_MESSAGE': 'Total',
-        'START_TIME': '',
-        'END_TIME': '',
-        'Count': total_count
-    })
-
     # Load Used OHTs from Utilization sheet
     book = load_workbook(existing_excel_path)
     sheet_date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
@@ -72,7 +64,7 @@ def process_error_log(input_path: str, existing_excel_path: str):
     failure_rate = total_count / (used_ohts * 24)
     failure_rate_str = f"{failure_rate:.2%}"
 
-    # Append failure rate row
+    # Append failure rate row to error sheet
     output_rows.append({
         'ERROR_MESSAGE': 'Failure Rate',
         'START_TIME': '',
@@ -82,9 +74,26 @@ def process_error_log(input_path: str, existing_excel_path: str):
 
     result_df = pd.DataFrame(output_rows)
 
-    # Save to Excel
     with pd.ExcelWriter(existing_excel_path, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
         error_sheet_name = f"{sheet_date}_errorStatistics"
         result_df.to_excel(writer, sheet_name=error_sheet_name, index=False)
 
     print(f"✅ Exported to: {existing_excel_path} (sheet: {error_sheet_name})")
+
+    # Update Weekly_Report
+    weekly_df = pd.read_excel(existing_excel_path, sheet_name="Weekly_Report")
+
+    target_date = (datetime.now() - timedelta(days=1)).date()
+    for i, row in weekly_df.iterrows():
+        try:
+            row_date = pd.to_datetime(row['Date'], errors='coerce').date()
+        except:
+            continue
+        if row_date == target_date:
+            weekly_df.at[i, 'Failure Rate (%)'] = failure_rate
+            print(f"📌 Inserted Failure Rate ({failure_rate_str}) into Weekly_Report at row {i+2}")
+            break
+
+    # Write back updated Weekly_Report
+    with pd.ExcelWriter(existing_excel_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+        weekly_df.to_excel(writer, sheet_name='Weekly_Report', index=False)
